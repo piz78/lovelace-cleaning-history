@@ -1,5 +1,5 @@
 import { LitElement, html, css, PropertyValues, nothing } from "lit";
-import { customElement, property, state, query } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { formatDateTimeNumeric, handleAction, hasAction } from "custom-card-helpers";
 import type {
   FrontendLocaleData,
@@ -59,10 +59,6 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
   @state() private _config!: CleaningHistoryCardConfig;
 
   @state() private _selectedKey?: string;
-
-  @state() private _modalUrl?: string;
-
-  @query(".modal-overlay") private _modalOverlay?: HTMLDivElement;
 
   private _holdTimer?: number;
 
@@ -133,20 +129,6 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     }
   }
 
-  private _openModal(url: string): void {
-    this._modalUrl = url;
-  }
-
-  private _closeModal(): void {
-    this._modalUrl = undefined;
-  }
-
-  private _onModalKeydown(ev: KeyboardEvent): void {
-    if (ev.key === "Escape") {
-      this._closeModal();
-    }
-  }
-
   private _onImagePointerDown(): void {
     this._holdTriggered = false;
     if (!hasAction(this._config.hold_action)) {
@@ -165,13 +147,13 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     }
   }
 
-  private _onImageClick(url: string): void {
+  private _onImageClick(): void {
     if (this._holdTriggered) {
       this._holdTriggered = false;
       return;
     }
     if (!hasAction(this._config.double_tap_action)) {
-      this._handleTap(url);
+      handleAction(this, this.hass, this._config, "tap");
       return;
     }
     if (this._clickTimer) {
@@ -182,16 +164,8 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     }
     this._clickTimer = window.setTimeout(() => {
       this._clickTimer = undefined;
-      this._handleTap(url);
+      handleAction(this, this.hass, this._config, "tap");
     }, DOUBLE_CLICK_WINDOW_MS);
-  }
-
-  private _handleTap(url: string): void {
-    if (!this._config.tap_action) {
-      this._openModal(url);
-      return;
-    }
-    handleAction(this, this.hass, this._config, "tap");
   }
 
   protected render() {
@@ -242,45 +216,14 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
                         @pointerdown=${this._onImagePointerDown}
                         @pointerup=${this._onImagePointerUp}
                         @pointercancel=${this._onImagePointerUp}
-                        @click=${() => this._onImageClick(selectedUrl)}
+                        @click=${this._onImageClick}
                       />
                     `
                   : nothing}
               `}
         </div>
       </ha-card>
-      ${this._modalUrl
-        ? html`
-            <div
-              class="modal-overlay"
-              tabindex="-1"
-              role="dialog"
-              aria-modal="true"
-              @click=${this._closeModal}
-              @keydown=${this._onModalKeydown}
-            >
-              <img
-                class="modal-image"
-                src=${this._modalUrl}
-                @click=${(ev: Event) => ev.stopPropagation()}
-              />
-              <button
-                class="modal-close"
-                aria-label="Close"
-                @click=${this._closeModal}
-              >
-                ✕
-              </button>
-            </div>
-          `
-        : nothing}
     `;
-  }
-
-  protected updated(changedProps: PropertyValues): void {
-    if (changedProps.has("_modalUrl") && this._modalUrl) {
-      this._modalOverlay?.focus();
-    }
   }
 
   static styles = css`
@@ -317,35 +260,6 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     .warning {
       padding: 8px 0;
       color: var(--error-color);
-    }
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.8);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      outline: none;
-    }
-    .modal-image {
-      max-width: 90vw;
-      max-height: 90vh;
-      object-fit: contain;
-      border-radius: var(--ha-card-border-radius, 12px);
-    }
-    .modal-close {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      background: rgba(0, 0, 0, 0.5);
-      color: #fff;
-      border: none;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      font-size: 18px;
-      cursor: pointer;
     }
   `;
 }

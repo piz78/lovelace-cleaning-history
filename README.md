@@ -32,11 +32,11 @@ title: Cleaning History
 | `entity`            | string | yes      | -                            | The camera entity holding the history attribute.                                                         |
 | `title`             | string | no       | entity's friendly name      | Card header title.                                                                                       |
 | `attribute`         | string | no       | `cleaning_history_picture`  | Entity attribute to read the history from (e.g. `cruising_history_picture` or `recovery_map_picture`).   |
-| `tap_action`        | action | no       | open image in modal         | Action on tap. Any standard HA action (`navigate`, `url`, `call-service`, `more-info`, `none`, etc.) overrides the default modal-open behavior. |
+| `tap_action`        | action | no       | more-info                   | Action on tap. Defaults to the entity's more-info dialog, same as other HA cards (e.g. `picture-glance`). Any standard HA action (`navigate`, `url`, `call-service`, `none`, etc.) overrides this. |
 | `hold_action`       | action | no       | none                         | Action on hold (long-press).                                                                              |
 | `double_tap_action` | action | no       | none                         | Action on double-tap.                                                                                     |
 
-The card lists every key of the chosen attribute in a dropdown (newest first, matching the entity's own ordering) and displays the corresponding image below it. Click the image to view it full-size in an in-card overlay (configurable via `tap_action`).
+The card lists every key of the chosen attribute in a dropdown (newest first, matching the entity's own ordering) and displays the corresponding image below it. By default, clicking the image opens the entity's more-info dialog, matching other HA cards like `picture-glance` (configurable via `tap_action`). Note that more-info shows the entity's current/live picture, not necessarily the specific historical entry selected in the dropdown — only the dropdown and inline preview reflect the chosen entry.
 
 In dashboards using the new "sections" view, the card's size can be adjusted via the standard resize handles in the card editor. This is not available in the older "masonry" view, which has no equivalent native Home Assistant mechanism.
 
