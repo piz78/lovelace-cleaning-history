@@ -1,12 +1,17 @@
 import { LitElement, html, css, PropertyValues, nothing } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
-import { formatDateTimeNumeric } from "custom-card-helpers";
+import { customElement, property, state, query } from "lit/decorators.js";
+import { formatDateTimeNumeric, handleAction, hasAction } from "custom-card-helpers";
 import type {
   FrontendLocaleData,
   HomeAssistant,
   LovelaceCard,
+  LovelaceCardEditor,
 } from "custom-card-helpers";
 import type { CleaningHistoryCardConfig } from "./types";
+import "./cleaning-history-card-editor";
+
+const HOLD_TIME_MS = 500;
+const DOUBLE_CLICK_WINDOW_MS = 250;
 
 const DEFAULT_ATTRIBUTE = "cleaning_history_picture";
 
@@ -55,6 +60,16 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
 
   @state() private _selectedKey?: string;
 
+  @state() private _modalUrl?: string;
+
+  @query(".modal-overlay") private _modalOverlay?: HTMLDivElement;
+
+  private _holdTimer?: number;
+
+  private _holdTriggered = false;
+
+  private _clickTimer?: number;
+
   public setConfig(config: CleaningHistoryCardConfig): void {
     if (!config.entity) {
       throw new Error("You need to define an entity");
@@ -63,8 +78,27 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     this._selectedKey = undefined;
   }
 
+  public static getConfigElement(): LovelaceCardEditor {
+    return document.createElement(
+      "cleaning-history-card-editor"
+    ) as unknown as LovelaceCardEditor;
+  }
+
+  public static getStubConfig(): Partial<CleaningHistoryCardConfig> {
+    return { entity: "", attribute: DEFAULT_ATTRIBUTE };
+  }
+
   public getCardSize(): number {
     return 5;
+  }
+
+  public getLayoutOptions(): Record<string, number> {
+    return {
+      grid_columns: 4,
+      grid_rows: 4,
+      grid_min_rows: 2,
+      grid_max_rows: 8,
+    };
   }
 
   protected willUpdate(changedProps: PropertyValues): void {
@@ -99,8 +133,65 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     }
   }
 
-  private _openImage(url: string): void {
-    window.open(url, "_blank");
+  private _openModal(url: string): void {
+    this._modalUrl = url;
+  }
+
+  private _closeModal(): void {
+    this._modalUrl = undefined;
+  }
+
+  private _onModalKeydown(ev: KeyboardEvent): void {
+    if (ev.key === "Escape") {
+      this._closeModal();
+    }
+  }
+
+  private _onImagePointerDown(): void {
+    this._holdTriggered = false;
+    if (!hasAction(this._config.hold_action)) {
+      return;
+    }
+    this._holdTimer = window.setTimeout(() => {
+      this._holdTriggered = true;
+      handleAction(this, this.hass, this._config, "hold");
+    }, HOLD_TIME_MS);
+  }
+
+  private _onImagePointerUp(): void {
+    if (this._holdTimer) {
+      clearTimeout(this._holdTimer);
+      this._holdTimer = undefined;
+    }
+  }
+
+  private _onImageClick(url: string): void {
+    if (this._holdTriggered) {
+      this._holdTriggered = false;
+      return;
+    }
+    if (!hasAction(this._config.double_tap_action)) {
+      this._handleTap(url);
+      return;
+    }
+    if (this._clickTimer) {
+      clearTimeout(this._clickTimer);
+      this._clickTimer = undefined;
+      handleAction(this, this.hass, this._config, "double_tap");
+      return;
+    }
+    this._clickTimer = window.setTimeout(() => {
+      this._clickTimer = undefined;
+      this._handleTap(url);
+    }, DOUBLE_CLICK_WINDOW_MS);
+  }
+
+  private _handleTap(url: string): void {
+    if (!this._config.tap_action) {
+      this._openModal(url);
+      return;
+    }
+    handleAction(this, this.hass, this._config, "tap");
   }
 
   protected render() {
@@ -131,7 +222,6 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
           ${entries.length === 0
             ? html`<div class="warning">No history available</div>`
             : html`
-                <label class="history-label">History</label>
                 <select class="history-select" @change=${this._handleSelected}>
                   ${entries.map(
                     ([key]) =>
@@ -149,32 +239,64 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
                         class="history-image"
                         src=${selectedUrl}
                         alt=${this._selectedKey ?? ""}
-                        @click=${() => this._openImage(selectedUrl)}
+                        @pointerdown=${this._onImagePointerDown}
+                        @pointerup=${this._onImagePointerUp}
+                        @pointercancel=${this._onImagePointerUp}
+                        @click=${() => this._onImageClick(selectedUrl)}
                       />
                     `
                   : nothing}
               `}
         </div>
       </ha-card>
+      ${this._modalUrl
+        ? html`
+            <div
+              class="modal-overlay"
+              tabindex="-1"
+              role="dialog"
+              aria-modal="true"
+              @click=${this._closeModal}
+              @keydown=${this._onModalKeydown}
+            >
+              <img
+                class="modal-image"
+                src=${this._modalUrl}
+                @click=${(ev: Event) => ev.stopPropagation()}
+              />
+              <button
+                class="modal-close"
+                aria-label="Close"
+                @click=${this._closeModal}
+              >
+                ✕
+              </button>
+            </div>
+          `
+        : nothing}
     `;
   }
 
+  protected updated(changedProps: PropertyValues): void {
+    if (changedProps.has("_modalUrl") && this._modalUrl) {
+      this._modalOverlay?.focus();
+    }
+  }
+
   static styles = css`
+    ha-card {
+      --ha-card-header-font-size: 18px;
+    }
     .content {
       display: flex;
       flex-direction: column;
       gap: 12px;
       padding: 0 16px 16px;
     }
-    .history-label {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-    }
     .history-select {
       width: 100%;
       box-sizing: border-box;
       padding: 12px;
-      margin-top: 4px;
       border-radius: 4px;
       border: 1px solid var(--divider-color, #e0e0e0);
       background: var(--card-background-color, #fff);
@@ -195,6 +317,35 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     .warning {
       padding: 8px 0;
       color: var(--error-color);
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      outline: none;
+    }
+    .modal-image {
+      max-width: 90vw;
+      max-height: 90vh;
+      object-fit: contain;
+      border-radius: var(--ha-card-border-radius, 12px);
+    }
+    .modal-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+      cursor: pointer;
     }
   `;
 }
