@@ -1,9 +1,51 @@
 import { LitElement, html, css, PropertyValues, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant, LovelaceCard } from "custom-card-helpers";
+import { formatDateTimeNumeric } from "custom-card-helpers";
+import type {
+  FrontendLocaleData,
+  HomeAssistant,
+  LovelaceCard,
+} from "custom-card-helpers";
 import type { CleaningHistoryCardConfig } from "./types";
 
 const DEFAULT_ATTRIBUTE = "cleaning_history_picture";
+
+const HISTORY_LABEL_RE =
+  /^(\d+):\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}):(\d{2})\s*-\s*(.+)$/;
+
+function formatHistoryLabel(label: string, locale: FrontendLocaleData): string {
+  const match = label.match(HISTORY_LABEL_RE);
+  if (!match) {
+    return label;
+  }
+  const [, index, month, day, year, hour, minute, rest] = match;
+  const now = new Date();
+  const fullYear = year
+    ? year.length === 2
+      ? 2000 + Number(year)
+      : Number(year)
+    : now.getFullYear();
+  let date = new Date(
+    fullYear,
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute)
+  );
+  if (!year && date.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {
+    date = new Date(
+      fullYear - 1,
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute)
+    );
+  }
+  if (Number.isNaN(date.getTime())) {
+    return label;
+  }
+  return `${index}: ${formatDateTimeNumeric(date, locale)} - ${rest}`;
+}
 
 @customElement("cleaning-history-card")
 export class CleaningHistoryCard extends LitElement implements LovelaceCard {
@@ -51,7 +93,7 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
   }
 
   private _handleSelected(ev: Event): void {
-    const value = (ev.target as { value?: string }).value;
+    const value = (ev.target as HTMLSelectElement).value;
     if (value) {
       this._selectedKey = value;
     }
@@ -89,19 +131,18 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
           ${entries.length === 0
             ? html`<div class="warning">No history available</div>`
             : html`
-                <ha-select
-                  .label=${"History"}
-                  .value=${this._selectedKey ?? ""}
-                  naturalMenuWidth
-                  fixedMenuPosition
-                  @selected=${this._handleSelected}
-                  @closed=${(ev: Event) => ev.stopPropagation()}
-                >
+                <label class="history-label">History</label>
+                <select class="history-select" @change=${this._handleSelected}>
                   ${entries.map(
                     ([key]) =>
-                      html`<ha-list-item .value=${key}>${key}</ha-list-item>`
+                      html`<option
+                        value=${key}
+                        ?selected=${key === this._selectedKey}
+                      >
+                        ${formatHistoryLabel(key, this.hass.locale)}
+                      </option>`
                   )}
-                </ha-select>
+                </select>
                 ${selectedUrl
                   ? html`
                       <img
@@ -125,8 +166,25 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
       gap: 12px;
       padding: 0 16px 16px;
     }
-    ha-select {
+    .history-label {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+    }
+    .history-select {
       width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      margin-top: 4px;
+      border-radius: 4px;
+      border: 1px solid var(--divider-color, #e0e0e0);
+      background: var(--card-background-color, #fff);
+      color: var(--primary-text-color);
+      font-size: 16px;
+      font-family: inherit;
+    }
+    .history-select:focus {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -1px;
     }
     .history-image {
       width: 100%;
