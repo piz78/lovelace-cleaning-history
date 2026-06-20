@@ -1,0 +1,25 @@
+{
+  "name": "lovelace-cleaning-history",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A custom Lovelace card for Home Assistant to browse and display a robot vacuum's historical cleaning maps.",
+  "main": "cleaning-history-card.js",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "custom-card-helpers": "^1.9.0",
+    "lit": "^2.8.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "rollup": "^4.9.6",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.3"
+  }
+}
