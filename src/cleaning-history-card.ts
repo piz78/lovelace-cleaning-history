@@ -1,5 +1,5 @@
 import { LitElement, html, css, PropertyValues, nothing } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, property, query, state } from "lit/decorators.js";
 import { formatDateTimeNumeric, handleAction, hasAction } from "custom-card-helpers";
 import type {
   FrontendLocaleData,
@@ -59,6 +59,10 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
   @state() private _config!: CleaningHistoryCardConfig;
 
   @state() private _selectedKey?: string;
+
+  @state() private _modalOpen = false;
+
+  @query(".modal-overlay") private _modalOverlay?: HTMLDivElement;
 
   private _holdTimer?: number;
 
@@ -129,6 +133,16 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     }
   }
 
+  private _closeModal(): void {
+    this._modalOpen = false;
+  }
+
+  private _onModalKeydown(ev: KeyboardEvent): void {
+    if (ev.key === "Escape") {
+      this._closeModal();
+    }
+  }
+
   private _onImagePointerDown(): void {
     this._holdTriggered = false;
     if (!hasAction(this._config.hold_action)) {
@@ -147,13 +161,21 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     }
   }
 
+  private _handleTap(): void {
+    if (!hasAction(this._config.tap_action)) {
+      this._modalOpen = true;
+      return;
+    }
+    handleAction(this, this.hass, this._config, "tap");
+  }
+
   private _onImageClick(): void {
     if (this._holdTriggered) {
       this._holdTriggered = false;
       return;
     }
     if (!hasAction(this._config.double_tap_action)) {
-      handleAction(this, this.hass, this._config, "tap");
+      this._handleTap();
       return;
     }
     if (this._clickTimer) {
@@ -164,8 +186,14 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     }
     this._clickTimer = window.setTimeout(() => {
       this._clickTimer = undefined;
-      handleAction(this, this.hass, this._config, "tap");
+      this._handleTap();
     }, DOUBLE_CLICK_WINDOW_MS);
+  }
+
+  protected updated(changedProps: PropertyValues): void {
+    if (changedProps.has("_modalOpen") && this._modalOpen) {
+      this._modalOverlay?.focus();
+    }
   }
 
   protected render() {
@@ -188,6 +216,9 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     const title = this._config.title ?? stateObj.attributes.friendly_name;
     const selectedUrl = this._selectedKey
       ? entries.find(([key]) => key === this._selectedKey)?.[1]
+      : undefined;
+    const selectedLabel = this._selectedKey
+      ? formatHistoryLabel(this._selectedKey, this.hass.locale)
       : undefined;
 
     return html`
@@ -223,6 +254,47 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
               `}
         </div>
       </ha-card>
+      ${this._modalOpen && selectedUrl
+        ? html`
+            <div
+              class="modal-overlay"
+              tabindex="-1"
+              @click=${this._closeModal}
+              @keydown=${this._onModalKeydown}
+            >
+              <div class="modal-dialog" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="modal-header">
+                  <button
+                    class="modal-close"
+                    @click=${this._closeModal}
+                    aria-label="Close"
+                  >
+                    <ha-icon icon="mdi:close"></ha-icon>
+                  </button>
+                  <div class="modal-titles">
+                    <div class="modal-subtitle">${title}</div>
+                    <div class="modal-title">${selectedLabel}</div>
+                  </div>
+                </div>
+                <img
+                  class="modal-image"
+                  src=${selectedUrl}
+                  alt=${this._selectedKey ?? ""}
+                />
+                <a
+                  class="modal-download"
+                  href=${selectedUrl}
+                  download
+                  target="_blank"
+                  rel="noopener"
+                >
+                  <ha-icon icon="mdi:download"></ha-icon>
+                  Download
+                </a>
+              </div>
+            </div>
+          `
+        : nothing}
     `;
   }
 
@@ -260,6 +332,85 @@ export class CleaningHistoryCard extends LitElement implements LovelaceCard {
     .warning {
       padding: 8px 0;
       color: var(--error-color);
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      outline: none;
+    }
+    .modal-dialog {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      max-width: 90vw;
+      max-height: 90vh;
+      background: var(--card-background-color, #fff);
+      border-radius: var(--ha-card-border-radius, 12px);
+      overflow: hidden;
+      box-shadow: var(
+        --shadow-elevation-16dp,
+        0 11px 15px -7px rgba(0, 0, 0, 0.2)
+      );
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+    }
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--primary-text-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      border-radius: 50%;
+    }
+    .modal-close:hover {
+      background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.08);
+    }
+    .modal-titles {
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-subtitle {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+    }
+    .modal-title {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+    .modal-image {
+      flex: 1;
+      max-width: 100%;
+      max-height: calc(90vh - 64px);
+      object-fit: contain;
+      display: block;
+    }
+    .modal-download {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      background: rgba(var(--rgb-primary-color), 0.1);
+      color: var(--primary-color);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
     }
   `;
 }
