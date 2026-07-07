@@ -4,7 +4,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace card to brows
 
 The card has a visual editor (no YAML required for basic setup) — add it via **Edit Dashboard → Add Card → Cleaning History Card**.
 
-![Example](docs/screenshot.png)
+![Example](cleaning-history-card.jpg)
 
 ## Installation
 
